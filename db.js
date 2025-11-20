@@ -79,19 +79,22 @@ async function incrementLegacyViews(owner, permlink) {
 
 /**
  * Increment view count for embed video
- * Note: Adding views field if it doesn't exist
+ * Note: Initializes views field to 1 if it doesn't exist on that document
  */
 async function incrementEmbedViews(owner, permlink) {
   const database = getDb();
   const collection = database.collection(process.env.MONGODB_COLLECTION_NEW);
   
+  // First, check if views field exists, if not set it to 0, then increment
+  await collection.updateOne(
+    { owner: owner, permlink: permlink, views: { $exists: false } },
+    { $set: { views: 0 } }
+  );
+  
+  // Now increment views
   const result = await collection.updateOne(
     { owner: owner, permlink: permlink },
-    { 
-      $inc: { views: 1 },
-      $setOnInsert: { views: 1 }
-    },
-    { upsert: false }
+    { $inc: { views: 1 } }
   );
   
   return result.modifiedCount > 0;
