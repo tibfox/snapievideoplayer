@@ -99,7 +99,7 @@ app.get('/api/watch', async (req, res) => {
       permlink: video.permlink,
       title: video.title || 'Untitled Video',
       description: video.description || '',
-      thumbnail: video.thumbnail ? transformIPFSUrl(video.thumbnail, true) : null, // Use fallback gateway for thumbnails
+      thumbnail: video.thumbnail ? transformIPFSUrl(video.thumbnail) : null, // Use primary gateway for thumbnails
       videoUrl: videoUrls.primary,
       videoUrlFallback: videoUrls.fallback,
       duration: video.duration || 0,
