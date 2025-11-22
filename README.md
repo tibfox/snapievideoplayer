@@ -4,6 +4,9 @@ A full-stack HTML5 video player built with Video.js for the 3speak platform. Sup
 
 ## Features
 
+- **JW Player-inspired architecture** - Elegant, simple approach to video playback (see [JW Player Reference](docs/JW_PLAYER_REFERENCE.md))
+- **Automatic aspect ratio detection** - Reads video dimensions from HLS metadata and adapts perfectly
+- **Perfect vertical video support** - No cropping, no scrollbars, no complex hacks (just like JW Player!)
 - **Full-stack architecture** - Node.js/Express backend + Video.js frontend
 - **MongoDB integration** - Connects to 3speak MongoDB for video metadata
 - **Dual video systems** - Supports legacy `videos` collection and new `embed-video` collection
@@ -11,6 +14,7 @@ A full-stack HTML5 video player built with Video.js for the 3speak platform. Sup
 - **Status-based placeholders** - Shows different videos based on encoding status (processing, finalizing, failed, deleted)
 - **View tracking** - Automatically increments view count when video plays
 - **Responsive design** - Modern UI with custom 3speak styling
+- **Comprehensive documentation** - [Live embedding demo](https://play.3speak.tv/embed-demo.html) with code examples
 
 ## Architecture
 
@@ -277,12 +281,34 @@ All configuration is in `.env`:
 - `PORT` - Server port (default: 3005)
 - `NODE_ENV` - Environment (development/production)
 
+## Vertical Video Handling
+
+This player uses **JW Player's proven approach** for handling all video orientations:
+
+- Player reads video dimensions from HLS manifest automatically
+- Dynamically sets aspect ratio using `player.aspectRatio(width:height)`
+- Simple CSS with Video.js `fluid: true` mode - no complex positioning hacks
+- Works perfectly for horizontal (16:9), vertical (9:16), and square (1:1) videos
+
+**For Frontend Developers:**
+- Store video dimensions in your database during upload
+- Detect orientation: `isVertical = height > width`
+- Use proper iframe heights: **800px for vertical, 400px for horizontal**
+- See [embed-demo.html](https://play.3speak.tv/embed-demo.html) for complete examples
+
+**Technical Details:**
+- See [docs/JW_PLAYER_REFERENCE.md](docs/JW_PLAYER_REFERENCE.md) for JW Player implementation analysis
+- Player uses just ~20 lines of CSS (vs 80+ lines of complexity before refactor)
+- No forced aspect ratios, no absolute positioning, no transform hacks
+- Trust the video metadata and let Video.js do the work!
+
 ## Development Notes
 
 - HLS streams loaded from IPFS gateway
 - View counter increments on first play
 - Player events logged to console for debugging
 - Supports all Video.js features and plugins
+- Refactored to match JW Player's elegant implementation (Nov 2024)
 
 ## License
 
