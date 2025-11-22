@@ -92,7 +92,7 @@ h3 {
   /* Let the video control the height naturally */
   height: auto !important;
   min-height: 400px !important; /* Minimum usable height */
-  max-height: 80vh !important; /* Don't overflow viewport */
+  max-height: none !important; /* No height limit for vertical videos */
 }
 
 .video-js.vertical-video .vjs-tech {
@@ -100,7 +100,7 @@ h3 {
   object-fit: contain !important;
   object-position: center !important;
   width: auto !important; /* Auto width prevents stretching */
-  height: 100% !important;
+  height: auto !important; /* Let video determine its own height */
   margin: 0 auto !important; /* Center horizontally */
   background-color: #000 !important;
 }
@@ -111,7 +111,7 @@ h3 {
   aspect-ratio: unset !important; /* Remove 16:9 constraint */
   height: auto !important;
   min-height: 400px !important;
-  max-height: 80vh !important;
+  max-height: none !important; /* No height limit */
 }
 
 /* Fix the snapie-player element for vertical videos */
