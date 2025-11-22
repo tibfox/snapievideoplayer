@@ -85,6 +85,15 @@ h3 {
   transform-origin: center !important; /* Fix rotation anchor point */
 }
 
+/* Better scaling for vertical videos - keeps container fixed but improves video display */
+.video-js.vertical-video .vjs-tech {
+  object-fit: contain !important;
+  object-position: center !important; /* Center the video properly */
+  width: 100% !important;
+  height: 100% !important;
+  background-color: #000 !important; /* Show black letterbox bars */
+}
+
 
 
 /* Player Logo Overlay */

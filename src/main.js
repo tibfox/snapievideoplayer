@@ -72,6 +72,11 @@ function initializePlayer() {
     updatePlayerState('Ready');
   });
 
+  player.on('loadeddata', function() {
+    // Small timeout to ensure HLS variant is chosen and real dimensions available
+    setTimeout(handleVerticalVideoDetection, 50);
+  });
+
 
 
 
@@ -245,6 +250,30 @@ async function loadVideoFromData(videoData) {
 
 
 
+
+// Handle vertical video detection for proper scaling (no container resizing)
+function handleVerticalVideoDetection() {
+  if (!player) return;
+  
+  // Use player.tech().el() to get the actual rendering video element (works with HLS/VHS)
+  const videoEl = player.tech().el();
+  if (!videoEl) return;
+  
+  const { videoWidth, videoHeight } = videoEl;
+  if (!videoWidth || !videoHeight) return;
+  
+  const isVertical = videoHeight > videoWidth;
+  
+  console.log(`Real dimensions: ${videoWidth}x${videoHeight} → vertical: ${isVertical}`);
+  
+  if (isVertical) {
+    console.log('Detected vertical video - adding vertical-video class for better scaling');
+    player.addClass('vertical-video');
+  } else {
+    console.log('Detected horizontal video - removing vertical-video class');
+    player.removeClass('vertical-video');
+  }
+}
 
 // Update UI helpers
 function updateCurrentSource(sourceName) {
