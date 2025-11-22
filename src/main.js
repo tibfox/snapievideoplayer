@@ -269,9 +269,15 @@ function handleVerticalVideoDetection() {
   if (isVertical) {
     console.log('Detected vertical video - adding vertical-video class for better scaling');
     player.addClass('vertical-video');
+    // Also add to wrapper to trigger CSS aspect-ratio changes
+    const wrapper = player.el().closest('.player-wrapper');
+    if (wrapper) wrapper.classList.add('vertical-video');
   } else {
     console.log('Detected horizontal video - removing vertical-video class');
     player.removeClass('vertical-video');
+    // Also remove from wrapper
+    const wrapper = player.el().closest('.player-wrapper');
+    if (wrapper) wrapper.classList.remove('vertical-video');
   }
 }
 

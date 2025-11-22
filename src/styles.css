@@ -85,13 +85,33 @@ h3 {
   transform-origin: center !important; /* Fix rotation anchor point */
 }
 
-/* Better scaling for vertical videos - keeps container fixed but improves video display */
+/* FIXED: Proper vertical video handling - no forehead cropping */
+.video-js.vertical-video {
+  /* Remove forced aspect ratio for vertical videos */
+  aspect-ratio: unset !important;
+  /* Let the video control the height naturally */
+  height: auto !important;
+  min-height: 400px !important; /* Minimum usable height */
+  max-height: 80vh !important; /* Don't overflow viewport */
+}
+
 .video-js.vertical-video .vjs-tech {
+  /* Key fix: Let video maintain natural aspect ratio */
   object-fit: contain !important;
-  object-position: center !important; /* Center the video properly */
-  width: 100% !important;
+  object-position: center !important;
+  width: auto !important; /* Auto width prevents stretching */
   height: 100% !important;
-  background-color: #000 !important; /* Show black letterbox bars */
+  margin: 0 auto !important; /* Center horizontally */
+  background-color: #000 !important;
+}
+
+/* Also update the wrapper for vertical videos */
+.player-wrapper:has(.vertical-video),
+.player-wrapper.vertical-video {
+  aspect-ratio: unset !important; /* Remove 16:9 constraint */
+  height: auto !important;
+  min-height: 400px !important;
+  max-height: 80vh !important;
 }
 
 
