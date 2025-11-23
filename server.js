@@ -236,6 +236,11 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'landing.html'));
 });
 
+// Serve the mobile debug helper page directly
+app.get('/debug-mobile.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'debug-mobile.html'));
+});
+
 // Serve frontend for /watch and /embed routes
 app.get(['/watch', '/embed'], (req, res) => {
   const videoParam = req.query.v;

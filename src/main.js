@@ -15,14 +15,29 @@ if (!videojs.getPlugin('hlsQualitySelector')) {
 // Initialize Video.js player
 let player;
 let currentVideoData = null;
+let isDebugMode = false;
+
+function debugLog(...args) {
+  if (isDebugMode) {
+    console.log('[3Speak Debug]', ...args);
+  }
+}
 
 function initializePlayer() {
+  const isFixedLayout = document.body.classList.contains('layout-mobile') || 
+                        document.body.classList.contains('layout-square');
+
+  debugLog('initializePlayer()', {
+    isFixedLayout,
+    bodyClassList: document.body.className
+  });
+
   player = videojs('snapie-player', {
     controls: true,
     autoplay: false,
     preload: 'auto',
-    fluid: true,  // Let Video.js handle aspect ratios like JW Player
-    responsive: true,
+    fluid: !isFixedLayout,        // DISABLE fluid in mobile/square layouts
+    responsive: !isFixedLayout,   // DISABLE responsive too
     playbackRates: [0.5, 1, 1.5, 2],
     controlBar: {
       volumePanel: {
@@ -41,6 +56,11 @@ function initializePlayer() {
         overrideNative: true
       }
     }
+  });
+
+  debugLog('player created with options', {
+    fluidOption: !isFixedLayout,
+    responsiveOption: !isFixedLayout
   });
 
   // Initialize quality selector plugin
@@ -69,13 +89,54 @@ function initializePlayer() {
 
   // Player event listeners
   player.on('ready', function() {
-    console.log('Player is ready');
+    debugLog('Player ready', {
+      isFixedLayout,
+      actualOptions: {
+        fluid: player.options_.fluid,
+        responsive: player.options_.responsive
+      }
+    });
     updatePlayerState('Ready');
   });
 
   player.on('loadedmetadata', function() {
     // JW Player approach: Read dimensions and set aspect ratio dynamically
     handleAspectRatio();
+
+    if (isDebugMode) {
+      const tech = player.el_.querySelector('.vjs-tech');
+      const videoJsEl = player.el();
+      if (tech) {
+        const techRect = tech.getBoundingClientRect();
+        const techStyles = window.getComputedStyle(tech);
+        debugLog('vjs-tech styles after loadedmetadata', {
+          rect: {
+            width: techRect.width,
+            height: techRect.height,
+            top: techRect.top,
+            left: techRect.left
+          },
+          styles: {
+            position: techStyles.position,
+            width: techStyles.width,
+            height: techStyles.height,
+            top: techStyles.top,
+            left: techStyles.left,
+            transform: techStyles.transform
+          }
+        });
+      } else {
+        debugLog('vjs-tech element not found after loadedmetadata');
+      }
+
+      if (videoJsEl) {
+        const wrapperRect = videoJsEl.getBoundingClientRect();
+        debugLog('.video-js wrapper rect', {
+          width: wrapperRect.width,
+          height: wrapperRect.height
+        });
+      }
+    }
   });
 
 
@@ -83,7 +144,7 @@ function initializePlayer() {
 
 
   player.on('play', function() {
-    console.log('Video is playing');
+    debugLog('Video playing');
     updatePlayerState('Playing');
     
     // Increment view count on first play
@@ -94,13 +155,13 @@ function initializePlayer() {
   });
 
   player.on('pause', function() {
-    console.log('Video is paused');
+    debugLog('Video paused');
     updatePlayerState('Paused');
     handleLogoVisibility();
   });
 
   player.on('ended', function() {
-    console.log('Video ended');
+    debugLog('Video ended');
     updatePlayerState('Ended');
   });
   
@@ -115,6 +176,7 @@ function initializePlayer() {
 
   player.on('error', function(error) {
     console.error('Player error:', error);
+    debugLog('Player error details', error);
     
     // If error is CORS/network related and we have a fallback, try it
     if (currentVideoData && currentVideoData.videoUrlFallback && !player.triedFallback) {
@@ -141,7 +203,8 @@ function getUrlParams() {
     video: params.get('v'),
     type: window.location.pathname.includes('/embed') ? 'embed' : 'legacy',
     mode: params.get('mode'), // 'iframe' for minimal embedding UI
-    layout: params.get('layout') // 'mobile', 'square', or 'desktop' (default)
+    layout: params.get('layout'), // 'mobile', 'square', or 'desktop' (default)
+    debug: params.get('debug')
   };
 }
 
@@ -205,7 +268,7 @@ async function loadVideoFromData(videoData) {
 
   // Set poster/thumbnail if available
   if (videoData.thumbnail) {
-    console.log('Setting thumbnail:', videoData.thumbnail);
+    debugLog('Setting thumbnail', videoData.thumbnail);
     player.poster(videoData.thumbnail);
   } else {
     console.log('No thumbnail available for this video');
@@ -230,7 +293,7 @@ async function loadVideoFromData(videoData) {
   player.src(sources);
   player.load();
   
-  console.log('Video sources:', sources);
+  debugLog('Video sources set', sources);
   
   // Update UI
   const title = videoData.title || `${videoData.owner}/${videoData.permlink}`;
@@ -246,7 +309,7 @@ async function loadVideoFromData(videoData) {
     updatePlayerState('Ready');
   }
   
-  console.log('Loaded video:', videoData);
+  debugLog('Loaded video data', videoData);
 }
 
 
@@ -268,18 +331,30 @@ function handleAspectRatio() {
   const isVertical = videoHeight > videoWidth;
   const aspectRatio = `${videoWidth}:${videoHeight}`;
   
-  console.log(`Video dimensions: ${videoWidth}x${videoHeight} → ${isVertical ? 'vertical' : 'horizontal'}`);
+  debugLog('handleAspectRatio video dimensions', {
+    videoWidth,
+    videoHeight,
+    orientation: isVertical ? 'vertical' : 'horizontal'
+  });
   
-  // Dynamically set aspect ratio like JW Player does
-  player.aspectRatio(aspectRatio);
+  // Check if we're in a fixed layout mode (mobile/square)
+  const hasFixedLayout = document.body.classList.contains('layout-mobile') || 
+                        document.body.classList.contains('layout-square');
+  
+  // Only set aspect ratio dynamically if NOT in a fixed layout mode
+  // Fixed layouts handle their own aspect ratios via CSS
+  if (!hasFixedLayout) {
+    player.aspectRatio(aspectRatio);
+    debugLog('Dynamic aspect ratio applied', aspectRatio);
+  } else {
+    debugLog('Fixed layout mode detected - skipping dynamic aspect ratio');
+  }
   
   // Add class for any additional styling needs
   if (isVertical) {
     player.addClass('vertical-video');
-    console.log(`Set aspect ratio to ${aspectRatio} for vertical video`);
   } else {
     player.removeClass('vertical-video');
-    console.log(`Set aspect ratio to ${aspectRatio} for horizontal video`);
   }
   
   // 🚀 FRONTEND INTEGRATION: Send video dimensions to parent window (for iframe embedding)
@@ -338,30 +413,34 @@ function showError(message) {
 
 // Initialize on DOM ready
 document.addEventListener('DOMContentLoaded', async function() {
-  // Initialize the player
-  initializePlayer();
+  // 1. FIRST: Get URL parameters and apply classes BEFORE initializing player
+  const { video, type, mode, layout, debug } = getUrlParams();
 
-  // Get URL parameters
-  const { video, type, mode, layout } = getUrlParams();
+  isDebugMode = ['1', 'true', 'yes', 'debug'].includes((debug || '').toLowerCase());
+  debugLog('DOMContentLoaded params', { video, type, mode, layout, debug });
   
-  // Enable iframe mode if requested
   if (mode === 'iframe') {
     document.body.classList.add('iframe-mode');
     console.log('Iframe mode enabled - minimal UI');
   }
   
-  // Apply layout mode for different display contexts
   if (layout) {
     document.body.classList.add(`layout-${layout}`);
-    console.log(`Layout mode: ${layout}`);
+    debugLog('Layout class added to body', `layout-${layout}`);
+  } else {
+    debugLog('No layout parameter provided');
   }
+  debugLog('Body class list before init', document.body.className);
+  
+  // 2. NOW: Initialize the player (it can now detect layout classes correctly)
+  initializePlayer();
   
   if (!video) {
     showError('No video specified. URL should be: /watch?v=owner/permlink or /embed?v=owner/permlink');
     return;
   }
   
-  console.log(`Loading ${type} video: ${video}`);
+  debugLog('Beginning video load', { type, video });
   
   try {
     // Fetch video data from API
