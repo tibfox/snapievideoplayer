@@ -278,6 +278,47 @@ body.layout-desktop .player-wrapper {
   background: #000;
 }
 
+/* Replay Button Overlay */
+.vjs-replay-button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: rgba(43, 51, 63, 0.9);
+  border: none;
+  border-radius: 50%;
+  width: 80px;
+  height: 80px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  padding: 0;
+}
+
+.vjs-replay-button:hover {
+  background: rgba(43, 51, 63, 1);
+  transform: translate(-50%, -50%) scale(1.1);
+}
+
+.vjs-replay-button svg {
+  width: 36px;
+  height: 36px;
+  color: white;
+  margin-bottom: -5px;
+}
+
+.vjs-replay-button span {
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .container {
@@ -294,5 +335,19 @@ body.layout-desktop .player-wrapper {
 
   .btn {
     width: 100%;
+  }
+  
+  .vjs-replay-button {
+    width: 70px;
+    height: 70px;
+  }
+  
+  .vjs-replay-button svg {
+    width: 30px;
+    height: 30px;
+  }
+  
+  .vjs-replay-button span {
+    font-size: 11px;
   }
 }

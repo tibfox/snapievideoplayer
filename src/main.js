@@ -39,6 +39,10 @@ function initializePlayer() {
     fluid: !isFixedLayout,        // DISABLE fluid in mobile/square layouts
     responsive: !isFixedLayout,   // DISABLE responsive too
     playbackRates: [0.5, 1, 1.5, 2],
+    userActions: {
+      hotkeys: true,
+      click: true  // Enable tap/click on video to play/pause
+    },
     controlBar: {
       volumePanel: {
         inline: false
@@ -147,6 +151,12 @@ function initializePlayer() {
     debugLog('Video playing');
     updatePlayerState('Playing');
     
+    // Hide replay button when playing
+    const replayBtn = document.querySelector('.vjs-replay-button');
+    if (replayBtn) {
+      replayBtn.style.display = 'none';
+    }
+    
     // Increment view count on first play
     if (currentVideoData && !player.hasIncrementedView) {
       incrementViewCount(currentVideoData);
@@ -163,6 +173,7 @@ function initializePlayer() {
   player.on('ended', function() {
     debugLog('Video ended');
     updatePlayerState('Ended');
+    showReplayButton();
   });
   
   // Handle user activity changes
@@ -373,6 +384,40 @@ function handleAspectRatio() {
     window.parent.postMessage(message, '*');
     console.log('📤 Sent video info to parent window:', message);
   }
+}
+
+// Show replay button overlay
+function showReplayButton() {
+  // Check if replay button already exists
+  let replayBtn = document.querySelector('.vjs-replay-button');
+  
+  if (!replayBtn) {
+    // Create replay button
+    replayBtn = document.createElement('button');
+    replayBtn.className = 'vjs-replay-button';
+    replayBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
+      </svg>
+      <span>Replay</span>
+    `;
+    
+    // Add click handler
+    replayBtn.addEventListener('click', function() {
+      if (player) {
+        player.currentTime(0);
+        player.play();
+        replayBtn.style.display = 'none';
+      }
+    });
+    
+    // Add to player
+    player.el().appendChild(replayBtn);
+  }
+  
+  // Show the button
+  replayBtn.style.display = 'flex';
+  debugLog('Replay button shown');
 }
 
 // Update UI helpers
