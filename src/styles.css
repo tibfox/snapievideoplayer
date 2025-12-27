@@ -51,12 +51,20 @@ h3 {
   max-height: 100vh; /* Prevent vertical videos from overflowing viewport */
   margin-bottom: 30px;
   background: #000;
+  min-height: 200px; /* Prevent collapse during load */
 }
 
 /* Video.js fluid mode handles aspect ratios automatically */
 .video-js {
   width: 100%;
   height: 100%;
+  opacity: 0;
+  transition: opacity 0.3s ease-in;
+}
+
+/* Show player once ready */
+.video-js.vjs-ready {
+  opacity: 1;
 }
 
 /* Let the video element maintain its natural aspect ratio */
@@ -105,8 +113,10 @@ h3 {
 
 /* Ensure poster/thumbnail displays properly */
 .video-js .vjs-poster {
-  background-size: cover;
+  background-size: contain;
+  background-repeat: no-repeat;
   background-position: center;
+  background-color: #000;
 }
 
 /* Prevent poster images from expanding beyond container */
