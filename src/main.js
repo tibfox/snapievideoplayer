@@ -445,6 +445,14 @@ function handleAspectRatio() {
   const videoWidth = player.videoWidth();
   const videoHeight = player.videoHeight();
   
+  // If the browser hasn't parsed the HLS stream yet, dimensions are 0
+  // This is a race condition bug - wait for the next frame to try again
+  if (videoWidth === 0 || videoHeight === 0) {
+    debugLog('Video dimensions are zero - waiting for loadeddata event');
+    player.one('loadeddata', handleAspectRatio);
+    return;
+  }
+  
   if (!videoWidth || !videoHeight) {
     console.log('Video dimensions not yet available');
     return;
