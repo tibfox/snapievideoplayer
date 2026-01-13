@@ -334,16 +334,35 @@ async function fetchVideoData(videoParam, type) {
     
     const data = await response.json();
     
-    // PERFORMANCE: Preload HLS manifest to warm IPFS cache (fire & forget)
+    // PERFORMANCE: Race multiple IPFS gateways to warm fastest cache (fire & forget)
     if (data.videoUrl) {
-      fetch(data.videoUrl, { 
-        method: 'HEAD',
-        cache: 'force-cache'
-      }).then(() => {
-        debugLog('HLS manifest preloaded from IPFS');
-      }).catch(err => {
-        debugLog('Manifest preload failed (non-critical):', err.message);
-      });
+      const gateways = [
+        'https://ipfs.3speak.tv',
+        'https://ipfs-audio.3speak.tv',
+        'https://ipfs.io',
+        'https://cloudflare-ipfs.com'
+      ];
+      
+      // Extract CID from videoUrl
+      const cidMatch = data.videoUrl.match(/\/ipfs\/([^\/]+)/);
+      if (cidMatch) {
+        const cid = cidMatch[1];
+        const path = data.videoUrl.split(cidMatch[0])[1] || '';
+        
+        // Race all gateways - first one wins
+        Promise.race(
+          gateways.map(gw => 
+            fetch(`${gw}/ipfs/${cid}${path}`, { 
+              method: 'HEAD',
+              cache: 'force-cache'
+            })
+          )
+        ).then(() => {
+          debugLog('HLS manifest preloaded from fastest IPFS gateway');
+        }).catch(err => {
+          debugLog('Manifest preload failed (non-critical):', err.message);
+        });
+      }
     }
     
     return data;
