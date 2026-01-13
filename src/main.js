@@ -340,7 +340,7 @@ async function fetchVideoData(videoParam, type) {
         'https://ipfs.3speak.tv',
         'https://ipfs-audio.3speak.tv',
         'https://ipfs.io',
-        'https://cloudflare-ipfs.com'
+        'https://gateway.pinata.cloud'
       ];
       
       // Extract CID from videoUrl
