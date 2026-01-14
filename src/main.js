@@ -339,8 +339,8 @@ async function fetchVideoData(videoParam, type) {
       const gateways = [
         'https://ipfs.3speak.tv',
         'https://ipfs-audio.3speak.tv',
-        'https://ipfs.io',
-        'https://gateway.pinata.cloud'
+        'https://dweb.link',
+        'https://ipfs.io'
       ];
       
       // Extract CID from videoUrl
