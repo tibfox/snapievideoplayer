@@ -27,27 +27,30 @@ function transformIPFSUrl(ipfsUrl, useFallback = false) {
   return ipfsUrl;
 }
 
-// Helper: Get gateway URLs with fallback chain: supernode -> hotnode -> audionode
+// Helper: Get gateway URLs with CDN-first fallback chain
 function getVideoUrls(ipfsUrl) {
   const gateways = {
-    supernode: process.env.IPFS_GATEWAY || 'https://ipfs.3speak.tv/ipfs',
-    hotnode: 'https://hotipfs-1.3speak.tv/ipfs',
-    audionode: 'https://ipfs-audio.3speak.tv/ipfs'
+    cdn: 'https://ipfs-3speak.b-cdn.net/ipfs',      // BunnyCDN IPFS (fastest, cached)
+    supernode: 'https://ipfs.3speak.tv/ipfs',        // Supernode (direct IPFS)
+    hotnode: 'https://hotipfs-1.3speak.tv/ipfs',     // Hotnode (future primary)
+    audionode: 'https://ipfs-audio.3speak.tv/ipfs'   // Audionode (backup)
   };
   
   if (ipfsUrl.startsWith('ipfs://')) {
     const cidPath = ipfsUrl.replace('ipfs://', '');
     return {
-      primary: `${gateways.supernode}/${cidPath}`,
-      fallback1: `${gateways.hotnode}/${cidPath}`,
-      fallback2: `${gateways.audionode}/${cidPath}`
+      primary: `${gateways.cdn}/${cidPath}`,
+      fallback1: `${gateways.supernode}/${cidPath}`,
+      fallback2: `${gateways.hotnode}/${cidPath}`,
+      fallback3: `${gateways.audionode}/${cidPath}`
     };
   }
   
   return {
     primary: ipfsUrl,
     fallback1: ipfsUrl,
-    fallback2: ipfsUrl
+    fallback2: ipfsUrl,
+    fallback3: ipfsUrl
   };
 }
 
@@ -107,7 +110,7 @@ app.get('/api/watch', async (req, res) => {
     // Transform IPFS URL with fallback
     const videoUrls = getVideoUrls(video.video_v2);
     
-    // Return video data with fallback chain
+    // Return video data with CDN-first fallback chain
     res.json({
       success: true,
       type: 'legacy',
@@ -119,6 +122,7 @@ app.get('/api/watch', async (req, res) => {
       videoUrl: videoUrls.primary,
       videoUrlFallback1: videoUrls.fallback1,
       videoUrlFallback2: videoUrls.fallback2,
+      videoUrlFallback3: videoUrls.fallback3,
       duration: video.duration || 0,
       views: video.views || 0,
       tags: video.tags_v2 || video.tags || []
@@ -183,10 +187,10 @@ app.get('/api/embed', async (req, res) => {
         });
       }
       
-      videoUrls = { primary: placeholderUrl, fallback1: placeholderUrl, fallback2: placeholderUrl };
+      videoUrls = { primary: placeholderUrl, fallback1: placeholderUrl, fallback2: placeholderUrl, fallback3: placeholderUrl };
     }
     
-    // Return video data with fallback chain
+    // Return video data with CDN-first fallback chain
     res.json({
       success: true,
       type: 'embed',
@@ -198,6 +202,7 @@ app.get('/api/embed', async (req, res) => {
       videoUrl: videoUrls.primary,
       videoUrlFallback1: videoUrls.fallback1,
       videoUrlFallback2: videoUrls.fallback2,
+      videoUrlFallback3: videoUrls.fallback3,
       thumbnail: thumbnail,
       duration: video.duration || 0,
       views: video.views || 0,

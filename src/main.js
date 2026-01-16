@@ -466,7 +466,7 @@ async function loadVideoFromData(videoData) {
     console.log('No thumbnail available for this video');
   }
 
-  // Set video sources with fallback chain: supernode -> hotnode -> audionode
+  // Set video sources with CDN-first fallback chain
   const sources = [
     {
       src: videoData.videoUrl,
@@ -474,7 +474,7 @@ async function loadVideoFromData(videoData) {
     }
   ];
   
-  // Add fallback chain if available
+  // Add fallback chain: CDN -> Supernode -> Hotnode -> Audionode
   if (videoData.videoUrlFallback1 && videoData.videoUrlFallback1 !== videoData.videoUrl) {
     sources.push({
       src: videoData.videoUrlFallback1,
@@ -485,6 +485,13 @@ async function loadVideoFromData(videoData) {
   if (videoData.videoUrlFallback2 && videoData.videoUrlFallback2 !== videoData.videoUrl) {
     sources.push({
       src: videoData.videoUrlFallback2,
+      type: 'application/x-mpegURL'
+    });
+  }
+  
+  if (videoData.videoUrlFallback3 && videoData.videoUrlFallback3 !== videoData.videoUrl) {
+    sources.push({
+      src: videoData.videoUrlFallback3,
       type: 'application/x-mpegURL'
     });
   }
