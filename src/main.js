@@ -339,6 +339,7 @@ async function fetchVideoData(videoParam, type) {
       const gateways = [
         'https://ipfs.3speak.tv',
         'https://ipfs-audio.3speak.tv',
+        'https://hotipfs-1.3speak.tv',
         'https://dweb.link',
         'https://ipfs.io'
       ];
