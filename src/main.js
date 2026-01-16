@@ -50,7 +50,7 @@ function initializePlayer() {
     },
     html5: {
       hls: {
-        enableLowInitialPlaylist: true,
+        enableLowInitialPlaylist: false,  // CHANGED: Don't start with lowest quality
         smoothQualityChange: true,
         overrideNative: true,
         // Aggressive buffering like JW Player
@@ -59,10 +59,11 @@ function initializePlayer() {
         maxBufferSize: 60 * 1000 * 1000,  // 60MB buffer size
         maxBufferHole: 0.5,               // Max gap to skip over
         highWaterLine: 30,                // Keep 30 seconds buffered
-        bandwidth: 5000000                // Start with 5Mbps bandwidth estimate
+        bandwidth: 10000000,              // INCREASED: Start with 10Mbps (more aggressive)
+        limitRenditionByPlayerDimensions: false  // Don't limit by player size
       },
       vhs: {
-        enableLowInitialPlaylist: true,
+        enableLowInitialPlaylist: false,  // CHANGED: Don't start with lowest quality
         smoothQualityChange: true,
         overrideNative: true,
         // Aggressive buffering like JW Player
@@ -71,7 +72,8 @@ function initializePlayer() {
         maxBufferSize: 60 * 1000 * 1000,  // 60MB buffer size
         maxBufferHole: 0.5,               // Max gap to skip over
         highWaterLine: 30,                // Keep 30 seconds buffered
-        bandwidth: 5000000                // Start with 5Mbps bandwidth estimate
+        bandwidth: 10000000,              // INCREASED: Start with 10Mbps (more aggressive)
+        limitRenditionByPlayerDimensions: false  // Don't limit by player size
       }
     }
   });
@@ -294,6 +296,32 @@ function initializePlayer() {
   
   player.on('userinactive', function() {
     handleLogoVisibility();
+  });
+
+  // Monitor buffering and force aggressive loading
+  player.on('waiting', function() {
+    debugLog('Player waiting/buffering');
+    
+    // Try to force buffer ahead when stalling
+    try {
+      const tech = player.tech({ IWillNotUseThisInPlugins: true });
+      if (tech && tech.vhs) {
+        debugLog('VHS buffer info', {
+          buffered: player.buffered(),
+          currentTime: player.currentTime(),
+          systemBandwidth: tech.vhs.systemBandwidth,
+          bandwidth: tech.vhs.bandwidth
+        });
+        
+        // Force bandwidth estimation higher if we're stalling
+        if (tech.vhs.bandwidth && tech.vhs.bandwidth < 5000000) {
+          debugLog('Increasing bandwidth estimate to prevent stalling');
+          tech.vhs.bandwidth = Math.max(tech.vhs.bandwidth * 2, 5000000);
+        }
+      }
+    } catch (e) {
+      debugLog('Could not access VHS tech:', e);
+    }
   });
 
   player.on('error', function(error) {
