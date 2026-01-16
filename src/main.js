@@ -416,14 +416,12 @@ async function fetchVideoData(videoParam, type) {
     
     const data = await response.json();
     
-    // PERFORMANCE: Race multiple IPFS gateways to warm fastest cache (fire & forget)
+    // PERFORMANCE: Race primary IPFS gateways only (reduced from 5 to 3)
     if (data.videoUrl) {
       const gateways = [
         'https://ipfs.3speak.tv',
         'https://ipfs-audio.3speak.tv',
-        'https://hotipfs-1.3speak.tv',
-        'https://dweb.link',
-        'https://ipfs.io'
+        'https://hotipfs-1.3speak.tv'
       ];
       
       // Extract CID from videoUrl
@@ -432,15 +430,16 @@ async function fetchVideoData(videoParam, type) {
         const cid = cidMatch[1];
         const path = data.videoUrl.split(cidMatch[0])[1] || '';
         
-        // Race all gateways - first one wins
-        Promise.race(
-          gateways.map(gw => 
+        // Race gateways with timeout - first one wins
+        Promise.race([
+          ...gateways.map(gw => 
             fetch(`${gw}/ipfs/${cid}${path}`, { 
               method: 'HEAD',
               cache: 'force-cache'
             })
-          )
-        ).then(() => {
+          ),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+        ]).then(() => {
           debugLog('HLS manifest preloaded from fastest IPFS gateway');
         }).catch(err => {
           debugLog('Manifest preload failed (non-critical):', err.message);
