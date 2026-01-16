@@ -25,8 +25,9 @@ function debugLog(...args) {
 }
 
 function initializePlayer() {
-  const isFixedLayout = document.body.classList.contains('layout-mobile') || 
-                        document.body.classList.contains('layout-square');
+  const isFixedLayout = document.body.classList.contains('layout-mobile') ||
+                        document.body.classList.contains('layout-square') ||
+                        document.body.classList.contains('layout-desktop');
 
   debugLog('initializePlayer()', {
     isFixedLayout,
@@ -161,16 +162,27 @@ function initializePlayer() {
     }
 
     // Autoplay: try with sound first, fall back to muted
+    // Skip autoplay entirely on Chrome (unreliable autoplay policy)
     if (shouldAutoplay) {
-      debugLog('Autoplay: loadedmetadata fired, attempting play with sound');
-      player.muted(false);
-      player.play().catch(function(error) {
-        debugLog('Autoplay with sound failed, trying muted:', error.message);
-        player.muted(true);
-        player.play().catch(function(err) {
-          debugLog('Muted autoplay also failed:', err.message);
+      const isChrome = /Chrome/.test(navigator.userAgent) && !/Edg|Brave/.test(navigator.userAgent);
+
+      if (isChrome) {
+        // Chrome: skip autoplay entirely
+        debugLog('Autoplay: Chrome detected, skipping autoplay');
+      } else {
+        // Other browsers: try with sound first, fall back to muted
+        debugLog('Autoplay: attempting play with sound');
+        player.muted(false);
+        player.play().catch(function(error) {
+          debugLog('Autoplay with sound failed, trying muted:', error.message);
+          player.muted(true);
+          player.play().then(function() {
+            showMutedAutoplayInfo();
+          }).catch(function(err) {
+            debugLog('Muted autoplay also failed:', err.message);
+          });
         });
-      });
+      }
     }
 
     if (isDebugMode) {
@@ -501,9 +513,10 @@ function handleAspectRatio() {
     orientation: isVertical ? 'vertical' : 'horizontal'
   });
   
-  // Check if we're in a fixed layout mode (mobile/square)
-  const hasFixedLayout = document.body.classList.contains('layout-mobile') || 
-                        document.body.classList.contains('layout-square');
+  // Check if we're in a fixed layout mode (mobile/square/desktop)
+  const hasFixedLayout = document.body.classList.contains('layout-mobile') ||
+                        document.body.classList.contains('layout-square') ||
+                        document.body.classList.contains('layout-desktop');
   
   // Only set aspect ratio dynamically if NOT in a fixed layout mode
   // Fixed layouts handle their own aspect ratios via CSS
@@ -570,6 +583,59 @@ function showReplayButton() {
   // Show the button
   replayBtn.style.display = 'flex';
   debugLog('Replay button shown');
+}
+
+// Show muted autoplay info button
+function showMutedAutoplayInfo() {
+  // Check if info already exists
+  let infoContainer = document.querySelector('.vjs-muted-autoplay-info');
+
+  if (!infoContainer) {
+    // Create info button container
+    infoContainer = document.createElement('div');
+    infoContainer.className = 'vjs-muted-autoplay-info';
+    infoContainer.innerHTML = `
+      <button type="button" aria-label="Sound info">i</button>
+      <div class="vjs-muted-autoplay-popup">
+        <p>Sound is off because your browser blocked autoplay with audio. Tap the speaker icon to unmute.</p>
+        <div class="browser-links">
+          <p>Allow autoplay with sound:</p>
+          <a href="https://support.mozilla.org/en-US/kb/block-autoplay" target="_blank" rel="noopener">Firefox</a>
+          <a href="https://browserhow.com/how-to-allow-or-block-sound-and-media-on-brave-browser/" target="_blank" rel="noopener">Brave</a>
+          <a href="https://www.microsoft.com/en-us/edge/learning-center/manage-autoplay" target="_blank" rel="noopener">Edge</a>
+          <span class="chrome-strikeout">Chrome</span>
+        </div>
+      </div>
+    `;
+
+    const btn = infoContainer.querySelector('button');
+    const popup = infoContainer.querySelector('.vjs-muted-autoplay-popup');
+
+    // Toggle popup on click
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      popup.classList.toggle('visible');
+    });
+
+    // Close popup when clicking elsewhere
+    document.addEventListener('click', function() {
+      popup.classList.remove('visible');
+    });
+
+    // Hide info when user unmutes
+    player.on('volumechange', function() {
+      if (!player.muted()) {
+        infoContainer.classList.remove('visible');
+      }
+    });
+
+    // Add to player
+    player.el().appendChild(infoContainer);
+  }
+
+  // Show the info button
+  infoContainer.classList.add('visible');
+  debugLog('Muted autoplay info shown');
 }
 
 // Update UI helpers

@@ -49,6 +49,10 @@ module.exports = {
         {
           from: 'autoplay-test.html',
           to: 'autoplay-test.html'
+        },
+        {
+          from: 'portrait-test.html',
+          to: 'portrait-test.html'
         }
       ]
     })
