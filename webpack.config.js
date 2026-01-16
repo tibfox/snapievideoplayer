@@ -47,12 +47,8 @@ module.exports = {
           to: 'landing.html'
         },
         {
-          from: 'autoplay-test.html',
-          to: 'autoplay-test.html'
-        },
-        {
-          from: 'portrait-test.html',
-          to: 'portrait-test.html'
+          from: 'embed-demo-local.html',
+          to: 'embed-demo-local.html'
         }
       ]
     })

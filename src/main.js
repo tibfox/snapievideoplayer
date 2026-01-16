@@ -17,6 +17,7 @@ let player;
 let currentVideoData = null;
 let isDebugMode = false;
 let shouldAutoplay = false;
+let isChrome = false; // Detected once at startup for performance
 
 function debugLog(...args) {
   if (isDebugMode) {
@@ -164,10 +165,8 @@ function initializePlayer() {
     // Autoplay: try with sound first, fall back to muted
     // Skip autoplay entirely on Chrome (unreliable autoplay policy)
     if (shouldAutoplay) {
-      const isChrome = /Chrome/.test(navigator.userAgent) && !/Edg|Brave/.test(navigator.userAgent);
-
       if (isChrome) {
-        // Chrome: skip autoplay entirely
+        // Chrome: skip autoplay entirely (detected at startup)
         debugLog('Autoplay: Chrome detected, skipping autoplay');
       } else {
         // Other browsers: try with sound first, fall back to muted
@@ -682,7 +681,11 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   isDebugMode = ['1', 'true', 'yes', 'debug'].includes((debug || '').toLowerCase());
   shouldAutoplay = ['1', 'true', 'yes'].includes((autoplay || '').toLowerCase());
-  debugLog('DOMContentLoaded params', { video, type, mode, layout, debug, noscroll, autoplay, shouldAutoplay });
+
+  // PERFORMANCE: Detect Chrome once at startup (avoid regex on every video load)
+  isChrome = /Chrome/.test(navigator.userAgent) && !/Edg|Brave/.test(navigator.userAgent);
+
+  debugLog('DOMContentLoaded params', { video, type, mode, layout, debug, noscroll, autoplay, shouldAutoplay, isChrome });
   
   if (mode === 'iframe') {
     document.body.classList.add('iframe-mode');
