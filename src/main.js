@@ -416,37 +416,6 @@ async function fetchVideoData(videoParam, type) {
     
     const data = await response.json();
     
-    // PERFORMANCE: Race primary IPFS gateways only (reduced from 5 to 3)
-    if (data.videoUrl) {
-      const gateways = [
-        'https://ipfs.3speak.tv',
-        'https://ipfs-audio.3speak.tv',
-        'https://hotipfs-1.3speak.tv'
-      ];
-      
-      // Extract CID from videoUrl
-      const cidMatch = data.videoUrl.match(/\/ipfs\/([^\/]+)/);
-      if (cidMatch) {
-        const cid = cidMatch[1];
-        const path = data.videoUrl.split(cidMatch[0])[1] || '';
-        
-        // Race gateways with timeout - first one wins
-        Promise.race([
-          ...gateways.map(gw => 
-            fetch(`${gw}/ipfs/${cid}${path}`, { 
-              method: 'HEAD',
-              cache: 'force-cache'
-            })
-          ),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
-        ]).then(() => {
-          debugLog('HLS manifest preloaded from fastest IPFS gateway');
-        }).catch(err => {
-          debugLog('Manifest preload failed (non-critical):', err.message);
-        });
-      }
-    }
-    
     return data;
     
   } catch (error) {
@@ -497,7 +466,7 @@ async function loadVideoFromData(videoData) {
     console.log('No thumbnail available for this video');
   }
 
-  // Set video sources with fallback
+  // Set video sources with fallback chain: supernode -> hotnode -> audionode
   const sources = [
     {
       src: videoData.videoUrl,
@@ -505,10 +474,17 @@ async function loadVideoFromData(videoData) {
     }
   ];
   
-  // Add fallback if available
-  if (videoData.videoUrlFallback && videoData.videoUrlFallback !== videoData.videoUrl) {
+  // Add fallback chain if available
+  if (videoData.videoUrlFallback1 && videoData.videoUrlFallback1 !== videoData.videoUrl) {
     sources.push({
-      src: videoData.videoUrlFallback,
+      src: videoData.videoUrlFallback1,
+      type: 'application/x-mpegURL'
+    });
+  }
+  
+  if (videoData.videoUrlFallback2 && videoData.videoUrlFallback2 !== videoData.videoUrl) {
+    sources.push({
+      src: videoData.videoUrlFallback2,
       type: 'application/x-mpegURL'
     });
   }

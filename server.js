@@ -27,11 +27,27 @@ function transformIPFSUrl(ipfsUrl, useFallback = false) {
   return ipfsUrl;
 }
 
-// Helper: Get both gateway URLs for a video
+// Helper: Get gateway URLs with fallback chain: supernode -> hotnode -> audionode
 function getVideoUrls(ipfsUrl) {
+  const gateways = {
+    supernode: process.env.IPFS_GATEWAY || 'https://ipfs.3speak.tv/ipfs',
+    hotnode: 'https://hotipfs-1.3speak.tv/ipfs',
+    audionode: 'https://ipfs-audio.3speak.tv/ipfs'
+  };
+  
+  if (ipfsUrl.startsWith('ipfs://')) {
+    const cidPath = ipfsUrl.replace('ipfs://', '');
+    return {
+      primary: `${gateways.supernode}/${cidPath}`,
+      fallback1: `${gateways.hotnode}/${cidPath}`,
+      fallback2: `${gateways.audionode}/${cidPath}`
+    };
+  }
+  
   return {
-    primary: transformIPFSUrl(ipfsUrl, false),
-    fallback: transformIPFSUrl(ipfsUrl, true)
+    primary: ipfsUrl,
+    fallback1: ipfsUrl,
+    fallback2: ipfsUrl
   };
 }
 
@@ -91,7 +107,7 @@ app.get('/api/watch', async (req, res) => {
     // Transform IPFS URL with fallback
     const videoUrls = getVideoUrls(video.video_v2);
     
-    // Return video data
+    // Return video data with fallback chain
     res.json({
       success: true,
       type: 'legacy',
@@ -101,7 +117,8 @@ app.get('/api/watch', async (req, res) => {
       description: video.description || '',
       thumbnail: video.thumbnail ? transformIPFSUrl(video.thumbnail) : `${process.env.IPFS_GATEWAY}/${process.env.DEFAULT_THUMBNAIL_CID}`,
       videoUrl: videoUrls.primary,
-      videoUrlFallback: videoUrls.fallback,
+      videoUrlFallback1: videoUrls.fallback1,
+      videoUrlFallback2: videoUrls.fallback2,
       duration: video.duration || 0,
       views: video.views || 0,
       tags: video.tags_v2 || video.tags || []
@@ -145,13 +162,8 @@ app.get('/api/embed', async (req, res) => {
     
     // Check status and determine which video to serve
     if (video.status === 'published' && video.manifest_cid) {
-      // Serve actual video with fallback
-      const gateway = process.env.IPFS_GATEWAY;
-      const gatewayFallback = process.env.IPFS_GATEWAY_FALLBACK;
-      videoUrls = {
-        primary: `${gateway}/${video.manifest_cid}/manifest.m3u8`,
-        fallback: `${gatewayFallback}/${video.manifest_cid}/manifest.m3u8`
-      };
+      // Serve actual video with fallback chain
+      videoUrls = getVideoUrls(`ipfs://${video.manifest_cid}/manifest.m3u8`);
       
       // Use thumbnail if available, otherwise use default
       if (video.thumbnail_url) {
@@ -171,10 +183,10 @@ app.get('/api/embed', async (req, res) => {
         });
       }
       
-      videoUrls = { primary: placeholderUrl, fallback: placeholderUrl };
+      videoUrls = { primary: placeholderUrl, fallback1: placeholderUrl, fallback2: placeholderUrl };
     }
     
-    // Return video data
+    // Return video data with fallback chain
     res.json({
       success: true,
       type: 'embed',
@@ -184,7 +196,8 @@ app.get('/api/embed', async (req, res) => {
       status: video.status,
       isPlaceholder: isPlaceholder,
       videoUrl: videoUrls.primary,
-      videoUrlFallback: videoUrls.fallback,
+      videoUrlFallback1: videoUrls.fallback1,
+      videoUrlFallback2: videoUrls.fallback2,
       thumbnail: thumbnail,
       duration: video.duration || 0,
       views: video.views || 0,
