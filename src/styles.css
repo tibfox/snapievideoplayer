@@ -444,6 +444,94 @@ body.layout-desktop .vjs-control-bar {
   letter-spacing: 0.5px;
 }
 
+/* Codec Error Overlay - HEVC/H.265 incompatibility */
+.vjs-codec-error-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.95);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.codec-error-content {
+  max-width: 600px;
+  color: white;
+  text-align: center;
+}
+
+.codec-error-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.codec-error-content h3 {
+  color: #ff6b6b;
+  font-size: 28px;
+  margin-bottom: 15px;
+}
+
+.codec-error-content > p {
+  font-size: 16px;
+  color: #ddd;
+  margin-bottom: 30px;
+  line-height: 1.6;
+}
+
+.codec-error-content strong {
+  color: #ffd93d;
+}
+
+.codec-error-details {
+  text-align: left;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.codec-error-details h4 {
+  color: #6bcf7f;
+  font-size: 18px;
+  margin-bottom: 10px;
+  margin-top: 20px;
+}
+
+.codec-error-details h4:first-child {
+  margin-top: 0;
+}
+
+.codec-error-details p {
+  color: #ccc;
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+
+.codec-error-technical {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 15px;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  color: #aaa;
+  text-align: left;
+  line-height: 1.8;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .container {
@@ -474,5 +562,21 @@ body.layout-desktop .vjs-control-bar {
   
   .vjs-replay-button span {
     font-size: 11px;
+  }
+  
+  .codec-error-content h3 {
+    font-size: 22px;
+  }
+  
+  .codec-error-content > p {
+    font-size: 14px;
+  }
+  
+  .codec-error-details h4 {
+    font-size: 16px;
+  }
+  
+  .codec-error-technical {
+    font-size: 12px;
   }
 }

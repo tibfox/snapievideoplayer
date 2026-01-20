@@ -35,6 +35,28 @@ function initializePlayer() {
     bodyClassList: document.body.className
   });
 
+  // Detect Mac OS - all browsers on Mac have strict SourceBuffer quota limits
+  const isMac = /Mac|iPad|iPhone|iPod/.test(navigator.platform) || 
+                /Mac|iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  
+  // Mac OS has strict memory quotas - apply conservative buffer settings for ALL browsers on Mac
+  const bufferSettings = isMac ? {
+    maxBufferLength: 20,              // Mac: 20 seconds (conservative)
+    maxMaxBufferLength: 40,           // Mac: 40 seconds max
+    maxBufferSize: 20 * 1000 * 1000,  // Mac: 20MB buffer limit
+    maxBufferHole: 0.3,
+    bandwidth: 3000000,               // Mac: Start conservative
+  } : {
+    maxBufferLength: 30,              // Linux/Windows: 30 seconds
+    maxMaxBufferLength: 60,           // 60 seconds max
+    maxBufferSize: 30 * 1000 * 1000,  // 30MB buffer
+    maxBufferHole: 0.5,
+    bandwidth: 5000000,               // Start with 5Mbps
+  };
+  
+  debugLog('Buffer settings', { isMac, isSafari, platform: navigator.platform, bufferSettings });
+
   player = videojs('snapie-player', {
     controls: true,
     autoplay: false,
@@ -55,13 +77,8 @@ function initializePlayer() {
       hls: {
         enableLowInitialPlaylist: false,
         smoothQualityChange: true,
-        overrideNative: true,
-        // Reasonable buffering (not too aggressive)
-        maxBufferLength: 30,              // 30 seconds ahead
-        maxMaxBufferLength: 60,           // Max 60 seconds total
-        maxBufferSize: 30 * 1000 * 1000,  // 30MB buffer
-        maxBufferHole: 0.5,
-        bandwidth: 5000000,               // Start with 5Mbps
+        overrideNative: isSafari && !isMac,  // Only use native on Safari non-Mac (iOS)
+        ...bufferSettings,
         limitRenditionByPlayerDimensions: false,
         handleManifestRedirects: true,
         withCredentials: false
@@ -69,13 +86,8 @@ function initializePlayer() {
       vhs: {
         enableLowInitialPlaylist: false,
         smoothQualityChange: true,
-        overrideNative: true,
-        // Reasonable buffering (not too aggressive)
-        maxBufferLength: 30,              // 30 seconds ahead
-        maxMaxBufferLength: 60,           // Max 60 seconds total
-        maxBufferSize: 30 * 1000 * 1000,  // 30MB buffer
-        maxBufferHole: 0.5,
-        bandwidth: 5000000,               // Start with 5Mbps
+        overrideNative: isSafari && !isMac,  // Only use native on Safari non-Mac (iOS)
+        ...bufferSettings,
         limitRenditionByPlayerDimensions: false,
         handleManifestRedirects: true,
         withCredentials: false
@@ -329,7 +341,7 @@ function initializePlayer() {
   player.stallCount = 0;
   player.lastStallTime = 0;
   
-  // Monitor buffering and force aggressive loading
+  // Monitor buffering and manage buffer cleanup (especially important for Safari)
   player.on('waiting', function() {
     debugLog('Player waiting/buffering');
     
@@ -357,8 +369,27 @@ function initializePlayer() {
           stallCount: player.stallCount
         });
         
-        // Force bandwidth estimation higher if we're stalling
-        if (tech.vhs.bandwidth && tech.vhs.bandwidth < 5000000) {
+        // Mac OS: Aggressive buffer cleanup to avoid quota errors (all browsers on Mac)
+        const isMac = /Mac|iPad|iPhone|iPod/.test(navigator.platform) || 
+                      /Mac|iPad|iPhone|iPod/.test(navigator.userAgent);
+        if (isMac && tech.vhs.sourceUpdater_) {
+          try {
+            const currentTime = player.currentTime();
+            const sourceUpdater = tech.vhs.sourceUpdater_;
+            
+            // Remove old buffered data (keep only 10 seconds behind current time)
+            if (currentTime > 10) {
+              debugLog('Mac OS: Cleaning old buffer to prevent quota errors');
+              sourceUpdater.remove('video', 0, currentTime - 10);
+              sourceUpdater.remove('audio', 0, currentTime - 10);
+            }
+          } catch (e) {
+            debugLog('Could not clean buffer:', e);
+          }
+        }
+        
+        // Force bandwidth estimation higher if we're stalling (but not on Mac)
+        if (!isMac && tech.vhs.bandwidth && tech.vhs.bandwidth < 5000000) {
           debugLog('Increasing bandwidth estimate to prevent stalling');
           tech.vhs.bandwidth = Math.max(tech.vhs.bandwidth * 2, 5000000);
         }
@@ -388,10 +419,99 @@ function initializePlayer() {
       debugLog('Could not access VHS tech:', e);
     }
   });
+  
+  // Periodic buffer cleanup for Mac OS (every 5 seconds during playback)
+  // This applies to ALL browsers on Mac (Safari, Chrome, Firefox, etc.)
+  player.on('timeupdate', function() {
+    const isMac = /Mac|iPad|iPhone|iPod/.test(navigator.platform) || 
+                  /Mac|iPad|iPhone|iPod/.test(navigator.userAgent);
+    if (!isMac) return;
+    
+    // Only clean every 5 seconds
+    const currentTime = player.currentTime();
+    if (!player.lastBufferCleanTime || currentTime - player.lastBufferCleanTime > 5) {
+      player.lastBufferCleanTime = currentTime;
+      
+      try {
+        const tech = player.tech({ IWillNotUseThisInPlugins: true });
+        if (tech && tech.vhs && tech.vhs.sourceUpdater_ && currentTime > 15) {
+          const sourceUpdater = tech.vhs.sourceUpdater_;
+          const cleanupPoint = currentTime - 10; // Keep 10 seconds behind
+          
+          debugLog('Mac OS: Periodic buffer cleanup', { currentTime, cleanupPoint });
+          sourceUpdater.remove('video', 0, cleanupPoint);
+          sourceUpdater.remove('audio', 0, cleanupPoint);
+        }
+      } catch (e) {
+        // Silently fail buffer cleanup
+      }
+    }
+  });
 
   player.on('error', function(error) {
     console.error('Player error:', error);
     debugLog('Player error details', error);
+    
+    const playerError = player.error();
+    
+    // Enhanced error diagnostics
+    if (playerError) {
+      const errorInfo = {
+        code: playerError.code,
+        message: playerError.message,
+        type: ['MEDIA_ERR_ABORTED', 'MEDIA_ERR_NETWORK', 'MEDIA_ERR_DECODE', 'MEDIA_ERR_SRC_NOT_SUPPORTED'][playerError.code - 1] || 'UNKNOWN',
+        currentSrc: player.currentSrc(),
+        networkState: player.networkState(),
+        readyState: player.readyState(),
+        browser: navigator.userAgent,
+        platform: navigator.platform
+      };
+      
+      console.error('🔴 DETAILED ERROR INFO:', errorInfo);
+      
+      // Try to get tech-specific error details
+      try {
+        const tech = player.tech({ IWillNotUseThisInPlugins: true });
+        if (tech && tech.vhs) {
+          console.error('VHS State:', {
+            currentPlaylist: tech.vhs.playlists?.media()?.uri || 'unknown',
+            bandwidth: tech.vhs.bandwidth,
+            systemBandwidth: tech.vhs.systemBandwidth,
+            mediaRequests: tech.vhs.mediaRequests_,
+            hasPlaylists: !!tech.vhs.playlists,
+            masterPlaylistController: !!tech.vhs.masterPlaylistController_
+          });
+        }
+      } catch (e) {
+        console.error('Could not get VHS details:', e);
+      }
+    }
+    
+    // Check for MEDIA_ERR_DECODE (code 3)
+    // This could be: codec issue, corrupted segments, CORS, or network problems
+    if (playerError && playerError.code === 3) {
+      console.error('🔴 MEDIA_ERR_DECODE detected');
+      console.error('Possible causes: 1) Codec incompatibility (HEVC) 2) Corrupted segments 3) CORS issues 4) Network problems');
+      
+      // First, try fallback gateway - might be corrupted segments on this gateway
+      if (currentVideoData && currentVideoData.videoUrlFallback && !player.triedFallback) {
+        console.log('⚠️ Trying fallback gateway (might fix corrupted segments)...');
+        player.triedFallback = true;
+        player.src({
+          src: currentVideoData.videoUrlFallback,
+          type: 'application/x-mpegURL'
+        });
+        player.load();
+        updatePlayerState('Retrying with different gateway...');
+        return;
+      }
+      
+      // If fallback also failed, show codec error
+      console.error('❌ Fallback also failed - likely codec or corruption issue');
+      showCodecError();
+      updatePlayerState('Decode Error - See Console');
+      return;
+    }
     
     // If error is CORS/network related and we have a fallback, try it
     if (currentVideoData && currentVideoData.videoUrlFallback && !player.triedFallback) {
@@ -737,6 +857,59 @@ function showError(message) {
     container.insertBefore(errorDiv, container.firstChild);
   }
   updatePlayerState('Error');
+}
+
+// Show codec/decode error overlay
+function showCodecError() {
+  // Check if error overlay already exists
+  let errorOverlay = document.querySelector('.vjs-codec-error-overlay');
+  
+  if (!errorOverlay) {
+    // Create codec error overlay
+    errorOverlay = document.createElement('div');
+    errorOverlay.className = 'vjs-codec-error-overlay';
+    errorOverlay.innerHTML = `
+      <div class="codec-error-content">
+        <div class="codec-error-icon">⚠️</div>
+        <h3>Video Playback Error</h3>
+        <p>The video cannot be decoded properly. This could be due to several reasons:</p>
+        <div class="codec-error-details">
+          <h4>Possible Causes:</h4>
+          <p><strong>1. Codec Incompatibility:</strong> Video may use H.265/HEVC codec (not supported in Chrome/Firefox)</p>
+          <p><strong>2. Corrupted Segments:</strong> Some video segments may be incomplete or damaged</p>
+          <p><strong>3. Network Issues:</strong> Segments failed to download completely</p>
+          <p><strong>4. CORS/Gateway Problems:</strong> Server configuration blocking proper playback</p>
+          
+          <h4>What to try:</h4>
+          <p>✓ Refresh the page and try again</p>
+          <p>✓ Try a different browser (if it works there, it's a codec issue)</p>
+          <p>✓ Check browser console (F12) for detailed error messages</p>
+          <p>✓ Contact video creator if problem persists</p>
+        </div>
+        <div class="codec-error-technical">
+          <strong>Technical Details:</strong><br>
+          Error Code: MEDIA_ERR_DECODE (3)<br>
+          Browser: <span id="error-browser">Unknown</span><br>
+          Platform: <span id="error-platform">Unknown</span><br>
+          <br>
+          Check console for full diagnostic information.
+        </div>
+      </div>
+    `;
+    
+    // Add to player
+    player.el().appendChild(errorOverlay);
+    
+    // Fill in browser/platform info
+    const browserSpan = errorOverlay.querySelector('#error-browser');
+    const platformSpan = errorOverlay.querySelector('#error-platform');
+    if (browserSpan) browserSpan.textContent = navigator.userAgent.split(' ').pop() || 'Unknown';
+    if (platformSpan) platformSpan.textContent = navigator.platform || 'Unknown';
+  }
+  
+  // Show the overlay
+  errorOverlay.style.display = 'flex';
+  debugLog('Decode error overlay shown');
 }
 
 // Initialize on DOM ready
