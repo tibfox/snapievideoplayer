@@ -14,12 +14,81 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Helper: Transform IPFS URL to gateway URL with fallback
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+const VIDEO_STATUS = {
+  // Deleted statuses
+  DELETE: 'delete',
+  DELETED: 'deleted',
+  SELF_DELETED: 'self_deleted',
+  
+  // Processing statuses
+  ENCODING_IPFS: 'encoding_ipfs',
+  IPFS_PINNING: 'ipfs_pinning',
+  UPLOADED: 'uploaded',
+  
+  // Failed statuses
+  ENCODING_FAILED: 'encoding_failed',
+  
+  // Ready statuses
+  PUBLISH_LATER: 'publish_later',
+  PUBLISH_MANUAL: 'publish_manual',
+  PUBLISHED: 'published',
+  SCHEDULED: 'scheduled'
+};
+
+const PLACEHOLDER_TYPE = {
+  PROCESSING: 'processing',
+  FAILED: 'failed',
+  DELETED: 'deleted'
+};
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Parse and validate video parameter (owner/permlink)
+ */
+function parseVideoParams(videoParam) {
+  if (!videoParam) {
+    return { error: 'Missing video parameter (v)' };
+  }
+  
+  const [owner, permlink] = videoParam.split('/');
+  
+  if (!owner || !permlink) {
+    return { error: 'Invalid video format. Expected: owner/permlink' };
+  }
+  
+  return { owner, permlink };
+}
+
+/**
+ * Create placeholder URL object with all fallbacks pointing to same URL
+ */
+function createPlaceholderUrls(placeholderUrl) {
+  return {
+    primary: placeholderUrl,
+    fallback1: placeholderUrl,
+    fallback2: placeholderUrl,
+    fallback3: placeholderUrl
+  };
+}
+
+/**
+ * Transform IPFS URL to gateway URL with fallback
+ */
 function transformIPFSUrl(ipfsUrl, useFallback = false) {
   const gateway = useFallback ? process.env.IPFS_GATEWAY_FALLBACK : process.env.IPFS_GATEWAY;
   
   if (ipfsUrl.startsWith('ipfs://')) {
-    // Remove ipfs:// prefix and construct gateway URL
     const cidPath = ipfsUrl.replace('ipfs://', '');
     return `${gateway}/${cidPath}`;
   }
@@ -27,7 +96,9 @@ function transformIPFSUrl(ipfsUrl, useFallback = false) {
   return ipfsUrl;
 }
 
-// Helper: Get gateway URLs with CDN-first fallback chain
+/**
+ * Get gateway URLs with CDN-first fallback chain
+ */
 function getVideoUrls(ipfsUrl) {
   const gateways = {
     cdn: 'https://ipfs-3speak.b-cdn.net/ipfs',      // BunnyCDN IPFS (fastest, cached)
@@ -54,19 +125,19 @@ function getVideoUrls(ipfsUrl) {
   };
 }
 
-// Helper: Get placeholder video URL based on status
-function getPlaceholderVideo(status) {
-  const gateway = process.env.IPFS_GATEWAY;
-  
-  switch (status?.toLowerCase()) {
-    case 'uploading':
-    case 'processing':
+/**
+ * Get placeholder video URL based on status
+ */
+function getPlaceholderVideo(placeholderType) {
+  switch (placeholderType?.toLowerCase()) {
+    case PLACEHOLDER_TYPE.PROCESSING:
+    case 'uploading': // Legacy support
       return transformIPFSUrl(process.env.PLACEHOLDER_PROCESSING_CID);
     
-    case 'failed':
+    case PLACEHOLDER_TYPE.FAILED:
       return transformIPFSUrl(process.env.PLACEHOLDER_FAILED_CID);
     
-    case 'deleted':
+    case PLACEHOLDER_TYPE.DELETED:
       return transformIPFSUrl(process.env.PLACEHOLDER_DELETED_CID);
     
     default:
@@ -74,26 +145,122 @@ function getPlaceholderVideo(status) {
   }
 }
 
-// API Routes
+/**
+ * Determine video URLs based on status for legacy collection (videos)
+ */
+function getVideoUrlsForLegacyStatus(video) {
+  const status = video.status?.toLowerCase() || '';
+  
+  // Deleted videos - serve deletion notice
+  if ([VIDEO_STATUS.DELETE, VIDEO_STATUS.DELETED, VIDEO_STATUS.SELF_DELETED].includes(status)) {
+    const placeholderUrl = getPlaceholderVideo(PLACEHOLDER_TYPE.DELETED);
+    if (!placeholderUrl) {
+      return { error: 'Placeholder configuration error', status: video.status };
+    }
+    return {
+      urls: createPlaceholderUrls(placeholderUrl),
+      isPlaceholder: true
+    };
+  }
+  
+  // Processing videos - serve processing notice
+  if ([VIDEO_STATUS.ENCODING_IPFS, VIDEO_STATUS.IPFS_PINNING, VIDEO_STATUS.UPLOADED].includes(status)) {
+    const placeholderUrl = getPlaceholderVideo(PLACEHOLDER_TYPE.PROCESSING);
+    if (!placeholderUrl) {
+      return { error: 'Placeholder configuration error', status: video.status };
+    }
+    return {
+      urls: createPlaceholderUrls(placeholderUrl),
+      isPlaceholder: true
+    };
+  }
+  
+  // Failed videos - serve failed notice
+  if ([VIDEO_STATUS.ENCODING_FAILED, 'failed'].includes(status)) {
+    const placeholderUrl = getPlaceholderVideo(PLACEHOLDER_TYPE.FAILED);
+    if (!placeholderUrl) {
+      return { error: 'Placeholder configuration error', status: video.status };
+    }
+    return {
+      urls: createPlaceholderUrls(placeholderUrl),
+      isPlaceholder: true
+    };
+  }
+  
+  // Ready videos - serve actual content
+  if ([VIDEO_STATUS.PUBLISH_LATER, VIDEO_STATUS.PUBLISH_MANUAL, VIDEO_STATUS.PUBLISHED, VIDEO_STATUS.SCHEDULED].includes(status)) {
+    if (!video.video_v2) {
+      return { error: 'Video source not available', status: video.status };
+    }
+    return {
+      urls: getVideoUrls(video.video_v2),
+      isPlaceholder: false
+    };
+  }
+  
+  // Unknown status
+  return { error: 'Video source not available', status: video.status };
+}
+
+/**
+ * Determine video URLs based on status for embed collection (embed-video)
+ */
+function getVideoUrlsForEmbedStatus(video) {
+  const status = video.status?.toLowerCase() || '';
+  
+  // Published videos with manifest - serve actual content
+  if (status === VIDEO_STATUS.PUBLISHED && video.manifest_cid) {
+    return {
+      urls: getVideoUrls(`ipfs://${video.manifest_cid}/manifest.m3u8`),
+      isPlaceholder: false
+    };
+  }
+  
+  // All other statuses - determine appropriate placeholder
+  let placeholderType = null;
+  
+  if ([VIDEO_STATUS.DELETE, VIDEO_STATUS.DELETED, VIDEO_STATUS.SELF_DELETED].includes(status)) {
+    placeholderType = PLACEHOLDER_TYPE.DELETED;
+  } else if ([VIDEO_STATUS.ENCODING_IPFS, VIDEO_STATUS.IPFS_PINNING, VIDEO_STATUS.UPLOADED].includes(status)) {
+    placeholderType = PLACEHOLDER_TYPE.PROCESSING;
+  } else if (status === 'uploading' || status === 'processing' || status === 'finalizing') {
+    placeholderType = PLACEHOLDER_TYPE.PROCESSING;
+  } else if ([VIDEO_STATUS.ENCODING_FAILED, 'failed'].includes(status)) {
+    placeholderType = PLACEHOLDER_TYPE.FAILED;
+  }
+  
+  if (!placeholderType) {
+    return { error: 'Video not ready', status: video.status };
+  }
+  
+  const placeholderUrl = getPlaceholderVideo(placeholderType);
+  if (!placeholderUrl) {
+    return { error: 'Placeholder configuration error', status: video.status };
+  }
+  
+  return {
+    urls: createPlaceholderUrls(placeholderUrl),
+    isPlaceholder: true
+  };
+}
+
+// ============================================================================
+// API ROUTES
+// ============================================================================
 
 /**
  * GET /api/watch?v=owner/permlink
- * Returns legacy video metadata
+ * Returns legacy video metadata from videos collection
  */
 app.get('/api/watch', async (req, res) => {
   try {
-    const videoParam = req.query.v;
-    
-    if (!videoParam) {
-      return res.status(400).json({ error: 'Missing video parameter (v)' });
+    // Parse and validate parameters
+    const params = parseVideoParams(req.query.v);
+    if (params.error) {
+      return res.status(400).json({ error: params.error });
     }
     
-    // Parse owner/permlink
-    const [owner, permlink] = videoParam.split('/');
-    
-    if (!owner || !permlink) {
-      return res.status(400).json({ error: 'Invalid video format. Expected: owner/permlink' });
-    }
+    const { owner, permlink } = params;
     
     // Find video in legacy collection
     const video = await db.findLegacyVideo(owner, permlink);
@@ -102,13 +269,15 @@ app.get('/api/watch', async (req, res) => {
       return res.status(404).json({ error: 'Video not found' });
     }
     
-    // Check if video has video_v2 field
-    if (!video.video_v2) {
-      return res.status(404).json({ error: 'Video source not available' });
-    }
+    // Determine video URLs based on status
+    const result = getVideoUrlsForLegacyStatus(video);
     
-    // Transform IPFS URL with fallback
-    const videoUrls = getVideoUrls(video.video_v2);
+    if (result.error) {
+      return res.status(404).json({ 
+        error: result.error,
+        status: result.status 
+      });
+    }
     
     // Return video data with CDN-first fallback chain
     res.json({
@@ -118,11 +287,15 @@ app.get('/api/watch', async (req, res) => {
       permlink: video.permlink,
       title: video.title || 'Untitled Video',
       description: video.description || '',
-      thumbnail: video.thumbnail ? transformIPFSUrl(video.thumbnail) : `${process.env.IPFS_GATEWAY}/${process.env.DEFAULT_THUMBNAIL_CID}`,
-      videoUrl: videoUrls.primary,
-      videoUrlFallback1: videoUrls.fallback1,
-      videoUrlFallback2: videoUrls.fallback2,
-      videoUrlFallback3: videoUrls.fallback3,
+      status: video.status,
+      isPlaceholder: result.isPlaceholder,
+      thumbnail: video.thumbnail 
+        ? transformIPFSUrl(video.thumbnail) 
+        : `${process.env.IPFS_GATEWAY}/${process.env.DEFAULT_THUMBNAIL_CID}`,
+      videoUrl: result.urls.primary,
+      videoUrlFallback1: result.urls.fallback1,
+      videoUrlFallback2: result.urls.fallback2,
+      videoUrlFallback3: result.urls.fallback3,
       duration: video.duration || 0,
       views: video.views || 0,
       tags: video.tags_v2 || video.tags || []
@@ -136,22 +309,17 @@ app.get('/api/watch', async (req, res) => {
 
 /**
  * GET /api/embed?v=owner/permlink
- * Returns embed video metadata with placeholder logic
+ * Returns embed video metadata from embed-video collection
  */
 app.get('/api/embed', async (req, res) => {
   try {
-    const videoParam = req.query.v;
-    
-    if (!videoParam) {
-      return res.status(400).json({ error: 'Missing video parameter (v)' });
+    // Parse and validate parameters
+    const params = parseVideoParams(req.query.v);
+    if (params.error) {
+      return res.status(400).json({ error: params.error });
     }
     
-    // Parse owner/permlink
-    const [owner, permlink] = videoParam.split('/');
-    
-    if (!owner || !permlink) {
-      return res.status(400).json({ error: 'Invalid video format. Expected: owner/permlink' });
-    }
+    const { owner, permlink } = params;
     
     // Find video in embed collection
     const video = await db.findEmbedVideo(owner, permlink);
@@ -160,35 +328,19 @@ app.get('/api/embed', async (req, res) => {
       return res.status(404).json({ error: 'Video not found' });
     }
     
-    let videoUrls;
-    let isPlaceholder = false;
-    let thumbnail = null;
+    // Determine video URLs based on status
+    const result = getVideoUrlsForEmbedStatus(video);
     
-    // Check status and determine which video to serve
-    if (video.status === 'published' && video.manifest_cid) {
-      // Serve actual video with fallback chain
-      videoUrls = getVideoUrls(`ipfs://${video.manifest_cid}/manifest.m3u8`);
-      
-      // Use thumbnail if available, otherwise use default
-      if (video.thumbnail_url) {
-        thumbnail = video.thumbnail_url;
-      } else {
-        thumbnail = `${process.env.IPFS_GATEWAY}/${process.env.DEFAULT_THUMBNAIL_CID}`;
-      }
-    } else {
-      // Serve placeholder based on status
-      const placeholderUrl = getPlaceholderVideo(video.status);
-      isPlaceholder = true;
-      
-      if (!placeholderUrl) {
-        return res.status(400).json({ 
-          error: 'Video not ready',
-          status: video.status 
-        });
-      }
-      
-      videoUrls = { primary: placeholderUrl, fallback1: placeholderUrl, fallback2: placeholderUrl, fallback3: placeholderUrl };
+    if (result.error) {
+      return res.status(404).json({ 
+        error: result.error,
+        status: result.status 
+      });
     }
+    
+    // Determine thumbnail
+    const thumbnail = video.thumbnail_url 
+      || `${process.env.IPFS_GATEWAY}/${process.env.DEFAULT_THUMBNAIL_CID}`;
     
     // Return video data with CDN-first fallback chain
     res.json({
@@ -198,11 +350,11 @@ app.get('/api/embed', async (req, res) => {
       permlink: video.permlink,
       title: video.originalFilename || `${video.owner}/${video.permlink}`,
       status: video.status,
-      isPlaceholder: isPlaceholder,
-      videoUrl: videoUrls.primary,
-      videoUrlFallback1: videoUrls.fallback1,
-      videoUrlFallback2: videoUrls.fallback2,
-      videoUrlFallback3: videoUrls.fallback3,
+      isPlaceholder: result.isPlaceholder,
+      videoUrl: result.urls.primary,
+      videoUrlFallback1: result.urls.fallback1,
+      videoUrlFallback2: result.urls.fallback2,
+      videoUrlFallback3: result.urls.fallback3,
       thumbnail: thumbnail,
       duration: video.duration || 0,
       views: video.views || 0,
