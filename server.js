@@ -372,7 +372,7 @@ app.get('/api/embed', async (req, res) => {
 
 /**
  * POST /api/view
- * Increment view count
+ * Increment view count only for published/ready videos (not placeholders)
  * Body: { owner, permlink, type: 'legacy' | 'embed' }
  */
 app.post('/api/view', async (req, res) => {
@@ -383,17 +383,43 @@ app.post('/api/view', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
     
+    let video = null;
     let success = false;
     
+    // Fetch video to check status before incrementing views
     if (type === 'legacy') {
-      success = await db.incrementLegacyViews(owner, permlink);
+      video = await db.findLegacyVideo(owner, permlink);
     } else if (type === 'embed') {
-      success = await db.incrementEmbedViews(owner, permlink);
+      video = await db.findEmbedVideo(owner, permlink);
     } else {
       return res.status(400).json({ error: 'Invalid type. Must be "legacy" or "embed"' });
     }
     
-    res.json({ success: success });
+    if (!video) {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+    
+    // Check if video is in a "ready" status (not a placeholder)
+    const status = video.status?.toLowerCase() || '';
+    const isReadyStatus = [
+      VIDEO_STATUS.PUBLISHED,
+      VIDEO_STATUS.SCHEDULED,
+      VIDEO_STATUS.PUBLISH_LATER,
+      VIDEO_STATUS.PUBLISH_MANUAL
+    ].includes(status);
+    
+    // Only increment views for ready/published videos, not placeholders
+    if (isReadyStatus) {
+      if (type === 'legacy') {
+        success = await db.incrementLegacyViews(owner, permlink);
+      } else {
+        success = await db.incrementEmbedViews(owner, permlink);
+      }
+      res.json({ success: success, counted: true });
+    } else {
+      // Don't count views for placeholders (deleted/processing/failed)
+      res.json({ success: false, counted: false, reason: 'Video not in published state' });
+    }
     
   } catch (error) {
     console.error('Error incrementing views:', error);
