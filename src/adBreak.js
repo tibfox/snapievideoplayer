@@ -100,6 +100,14 @@ const CAP_ID = (() => {
   }
 })();
 
+/* How many seconds of warning a viewer gets before the break.
+ *
+ * Exported because it is TWO decisions wearing one number: how long the "Ad in 3" hint
+ * is on screen, and how long the seek lock is armed for. They have to be the same
+ * window, or the hint names a second the lock then refuses.
+ */
+export const AD_COUNTDOWN_FROM = 3;
+
 export function createAdBreak() {
   let session = null;      // { sid, position, durationSeconds, label, advertiser, brand }
   // The banner is a SEPARATE placement, from a separate advertiser, and can be
@@ -113,6 +121,12 @@ export function createAdBreak() {
   let bannerSid = null;
   let window_ = null;      // { start, duration } in PLAYER time, once resolved
   let premium = false;     // this viewer pays for Pro, so playback is ad-free
+  /* Has the countdown actually been on screen for this spot?
+   *
+   * The seek lock hangs off this rather than off position alone, because "the playhead
+   * is near the cut" is also true at t=0 of a PRE-ROLL, where no countdown ever runs.
+   * Arming on position would refuse the legitimate seeks that happen at load. */
+  let countdownSeen = false;
 
   return {
     get active() { return !!session; },
@@ -273,6 +287,54 @@ export function createAdBreak() {
     },
 
     /**
+     * Whole seconds to show in the "Ad in N" hint, or null for no hint.
+     *
+     * The arithmetic lives here rather than in main.js because it also ARMS THE SEEK
+     * LOCK. Two copies of "is the countdown up" is two chances for the lock to disagree
+     * with the thing the viewer can see.
+     */
+    countdownAt(playerTime) {
+      const left = this.secondsUntil(playerTime);
+      if (left == null || left > AD_COUNTDOWN_FROM) return null;
+      countdownSeen = true;
+      return Math.max(1, Math.ceil(left));
+    },
+
+    /**
+     * 🚨 Is the playhead under the no-skip lock?
+     *
+     * From the moment the countdown appears until the spot has run. Without this the
+     * warning is an instruction: it names the exact second to drag the handle past, and
+     * the timeline is still live to do it with, so the thing meant to make a break
+     * bearable is what teaches viewers to dodge it.
+     *
+     * ⚠️ This player has no spent-spot handling — scrubbing back over a spot replays it
+     * rather than jumping it — so the lock re-arms on a rewind, which is consistent with
+     * the ad genuinely playing again here. dev-player disarms via spotConsumed because
+     * there the seconds become a hole in the timeline instead.
+     */
+    seekLocked(playerTime) {
+      if (!window_ || !isFinite(playerTime) || !countdownSeen) return false;
+      return playerTime >= window_.start - AD_COUNTDOWN_FROM
+          && playerTime < window_.start + window_.duration;
+    },
+
+    /**
+     * Where a seek made under the lock must land instead, or null to let it through.
+     *
+     * Refusing means staying put, not being thrown forward. BACKWARDS IS ALWAYS
+     * ALLOWED: rewinding out of the countdown is not a way past the ad, since the break
+     * is still in front of them either way.
+     */
+    lockedSeekTarget(playerTime, cameFrom) {
+      if (!isFinite(playerTime) || !isFinite(cameFrom)) return null;
+      if (!this.seekLocked(cameFrom)) return null;
+      if (playerTime < window_.start) return null;
+      if (playerTime <= cameFrom) return null;
+      return cameFrom;
+    },
+
+    /**
      * Player time → content time.
      *
      * Inside the break the content has not advanced at all, so it pins to the cut
@@ -290,6 +352,6 @@ export function createAdBreak() {
     /** How much of the visible timeline is ad, for duration-facing UI. */
     get addedSeconds() { return window_ ? window_.duration : 0; },
 
-    reset() { session = null; window_ = null; banner = null; bannerWindow = null; bannerSid = null; premium = false; },
+    reset() { session = null; window_ = null; countdownSeen = false; banner = null; bannerWindow = null; bannerSid = null; premium = false; },
   };
 }

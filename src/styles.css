@@ -1082,3 +1082,15 @@ body.tv-fullscreen-mode .vjs-tech {
   visibility: hidden;
   pointer-events: none;
 }
+
+/* The seconds BEFORE the spot, while "Ad in 3" is on screen.
+ *
+ * Dimmed rather than hidden, which is the whole difference from the rule above: the
+ * creator's video is still playing, so a bar that vanished for three seconds and came
+ * back would read as the player glitching. Everything else in the control bar stays,
+ * since pause, volume and fullscreen are not ways past an ad. */
+.video-js.vjs-roll-imminent .vjs-progress-control {
+  pointer-events: none;
+  opacity: 0.45;
+  transition: opacity 0.2s ease;
+}

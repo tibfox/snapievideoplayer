@@ -523,8 +523,33 @@ function initializePlayer() {
   // Consolidated timeupdate handler — single listener for buffer cleanup + postMessage
   let lastTimeUpdate = 0;
   const isInIframe = window.parent !== window;
+  /* 🚨 THE BACKSTOP FOR EVERY WAY PAST A BREAK THAT IS NOT THE BAR OR THE KEYBOARD.
+   *
+   * Dimming the scrubber and swallowing the arrow keys covers what a viewer can reach
+   * by hand, but a deep link, a chapter jump, a media key or anything a later feature
+   * adds all end up setting currentTime directly. They land here.
+   *
+   * Bound to 'seeking', NOT to the tick. Ordinary playback walks the clock across the
+   * cut like any other second, and refusing that would pin the playhead a frame short
+   * of the ad forever: unskippable and unplayable at once. `lastSeen` is the position
+   * before this event, which is the only way to tell a jump from playing through. */
+  var lastSeen = null;
+  var refuseLockedSeek = function () {
+    if (!adBreak.active || !player) return;
+    var at = player.currentTime();
+    if (!isFinite(at)) return;
+    var to = adBreak.lockedSeekTarget(at, lastSeen);
+    if (to == null) { lastSeen = at; return; }
+    try { player.currentTime(to); } catch (_) { /* it plays through, as it did before */ }
+    lastSeen = to;
+  };
+  player.on('seeking', refuseLockedSeek);
+  player.on('seeked', refuseLockedSeek);
+
   player.on('timeupdate', function() {
     const currentTime = player.currentTime();
+    // Keep the pre-seek position current WITHOUT running the refusal on the tick.
+    if (!adBreak.active || !adBreak.lockedSeekTarget(currentTime, lastSeen)) lastSeen = currentTime;
 
     // Watch-duration heartbeat — timeupdate only fires while the video is
     // genuinely advancing (not when paused), so it doubles as our "still
@@ -550,11 +575,16 @@ function initializePlayer() {
       // painted into the creator's video while it plays normally — taking the
       // timeline away then would be removing a control from ordinary playback.
       setRollChrome(inside);
+      // From the first frame of the countdown, not the first frame of the spot. Dimmed
+      // rather than hidden: the creator's video is still playing underneath.
+      setImminentChrome(!inside && adBreak.seekLocked(currentTime));
       // A mid-roll that arrives with no warning is the part viewers resent most. A
       // few seconds' notice costs the advertiser nothing and turns an interruption
       // into a beat. Never while the spot is already playing.
-      const left = inside ? null : adBreak.secondsUntil(currentTime);
-      updateAdCountdown(left != null && left <= AD_COUNTDOWN_FROM ? Math.max(1, Math.ceil(left)) : null);
+      //
+      // countdownAt() rather than the arithmetic inline: it is what arms the seek lock,
+      // so the hint appearing and the timeline locking are one event, not two.
+      updateAdCountdown(inside ? null : adBreak.countdownAt(currentTime));
     }
     // The banner is independent of the spot: it can run on a playback with no spot
     // at all, so it is driven on its own terms.
@@ -1303,6 +1333,20 @@ let sponsorBuiltFor = null;
  * decision lives in CSS and nothing has to remember which controls were hidden in
  * order to put them back.
  */
+/**
+ * Player chrome in the seconds BEFORE the spot, while the countdown is on screen.
+ *
+ * Deliberately not setRollChrome: that hides the whole control bar, which is right while
+ * somebody else's video is playing and wrong here, where the creator's video is still
+ * running and the viewer keeps pause, volume and fullscreen. Only the scrubber goes, and
+ * it dims rather than disappearing, so the bar does not look like it glitched.
+ */
+function setImminentChrome(locked) {
+  const host = player && player.el && player.el();
+  if (!host) return;
+  host.classList.toggle('vjs-roll-imminent', !!locked);
+}
+
 function setRollChrome(inside) {
   const host = player && player.el && player.el();
   if (!host) return;
@@ -1398,7 +1442,8 @@ function updateSponsorLabel(show) {
 }
 
 /** How many seconds of warning a viewer gets before the break. */
-const AD_COUNTDOWN_FROM = 3;
+// AD_COUNTDOWN_FROM lives in adBreak.js: it sizes the seek lock as well as the hint,
+// and the two have to be the same window.
 
 /**
  * The pre-roll warning: "Ad in 3" counting down to the break.
@@ -2216,7 +2261,10 @@ document.addEventListener('DOMContentLoaded', async function() {
   document.addEventListener('keydown', function(event) {
     if (!adBreak.active || !player) return;
     var t = player.currentTime();
-    if (!adBreak.isInside(t)) return;              // 🚨 roll only — banners keep every key
+    /* 🚨 roll AND run-up — banners keep every key. seekLocked covers the countdown as
+     * well as the spot: the arrow keys walked straight past a break the viewer had just
+     * been warned about, which is the one moment they have a reason to try. */
+    if (!adBreak.isInside(t) && !adBreak.seekLocked(t)) return;
     if (SEEK_KEYS.indexOf(event.key) === -1) return;
     event.preventDefault();
     event.stopPropagation();
