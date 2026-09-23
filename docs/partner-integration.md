@@ -176,9 +176,6 @@ Use `/embed?v=` for current uploads and `/watch?v=` for legacy ones.
 You do **not** need `?viewer=` as well. The player reads the name out of the token,
 which is also how we recognise a Pro subscriber and skip their ads.
 
-> ⚠️ **Rolling out.** If tokens are not being honoured on `play.3speak.tv` yet, ask us
-> for a test endpoint. Everything else about the integration is identical.
-
 ---
 
 ## What has to be true for a viewer to earn
